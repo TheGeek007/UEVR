@@ -162,6 +162,16 @@ public:
     // out_active reports whether the runtime has the action bound, so callers can fall back to a
     // digital equivalent on controllers that expose no analog component.
     float get_action_float(XrAction action, VRRuntime::Hand hand, bool* out_active = nullptr) const;
+
+    // Whether the trackpad's region-to-button activators are redundant on the controller in use.
+    // The Index has real A/B and thumbstick-click, so the buttons its activators synthesize stay
+    // reachable without the pad and the pad is free to be repurposed. A Vive wand has no other
+    // source for them, so there the activators keep it and the trackpad DPad stands down.
+    bool are_trackpad_activators_redundant(VRRuntime::Hand hand) const {
+        return hand <= VRRuntime::Hand::RIGHT ? this->hands[hand].trackpad_activators_redundant : true;
+    }
+
+    bool compute_trackpad_activators_redundant(VRRuntime::Hand hand, const std::string& interaction_profile, XrAction touchpad_action) const;
     std::string translate_openvr_action_name(std::string action_name) const;
 
     Vector2f get_stick_axis(VRRuntime::Hand hand) const;
@@ -408,6 +418,11 @@ public:
 
         bool active{false};
 
+        // Whether every button this hand's trackpad activators synthesize is also reachable from a
+        // real binding on the current interaction profile. Refreshed each frame in update_input
+        // rather than queried on demand, because resolving the current profile is a runtime call.
+        bool trackpad_activators_redundant{true};
+
         struct UI {
             char new_path_name[XR_MAX_PATH_LENGTH]{};
             uint32_t new_path_name_length{0};
@@ -479,6 +494,13 @@ public:
 
         {"/user/hand/*/input/trackpad", "touchpad"}, // vive & others
         {"/user/hand/*/input/trackpad/click", "touchpadclick"}, // vive & others
+        // The Index's trackpad is force-based and its interaction profile has no trackpad/click,
+        // so the entry above is rejected for it and click activation would never fire. Binding the
+        // force component to the same boolean action gives it a click; the runtime thresholds the
+        // float. Profiles only get whichever of the two they actually support: vive has no force,
+        // index has no click, and a rejected suggestion is dropped without touching path_map.
+        {"/user/hand/*/input/trackpad/force", "touchpadclick"}, // index
+        {"/user/hand/*/input/trackpad/touch", "touchpadtouch"}, // vive & index
         {"/user/hand/*/output/haptic", "haptic"}, // most of them
     };
 

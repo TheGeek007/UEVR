@@ -888,11 +888,12 @@ void VR::on_xinput_get_state(uint32_t* retval, uint32_t user_index, XINPUT_STATE
     // Trackpad-driven DPad and menu buttons. On Index (knuckles) both trackpads are otherwise
     // unread, which makes them a free home for the DPad, and for Start/Back which are otherwise
     // only reachable through the system button that SteamVR normally reserves for its dashboard.
-    // Controllers that bind their trackpad to the Joystick action instead (Vive wands) report an
-    // inactive Touchpad action here, so this stays inert for them.
+    // owns_trackpad decides whether the pad is actually ours: OpenVR routes a padless controller's
+    // trackpad to Joystick so its Touchpad action reads inactive, while OpenXR hands the pad to
+    // whichever consumer needs it more on the controller in use.
     uint8_t trackpad_dpad_direction{DPadGestureState::Direction::NONE};
 
-    if (m_trackpad_dpad->value()) {
+    if (owns_trackpad(VRRuntime::Hand::LEFT)) {
         trackpad_dpad_direction = get_trackpad_direction(left_joystick);
 
         if ((trackpad_dpad_direction & DPadGestureState::Direction::UP) != 0) {
@@ -912,7 +913,7 @@ void VR::on_xinput_get_state(uint32_t* retval, uint32_t user_index, XINPUT_STATE
         }
     }
 
-    if (m_trackpad_menu->value()) {
+    if (owns_trackpad(VRRuntime::Hand::RIGHT)) {
         const auto trackpad_menu_direction = get_trackpad_direction(right_joystick);
 
         if ((trackpad_menu_direction & DPadGestureState::Direction::UP) != 0) {

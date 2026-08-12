@@ -642,9 +642,26 @@ VRRuntime::Error OpenXR::update_input() {
         }
 
         // Handle vector activator stuff
+        const auto touchpad_it = this->action_set.action_map.find("touchpad");
+        const auto touchpad_action = touchpad_it != this->action_set.action_map.end() ? touchpad_it->second : XR_NULL_HANDLE;
+
+        // Refresh before asking who owns the pad: owns_trackpad reads this to decide whether the
+        // trackpad DPad may take it, and the interaction profile can change mid-session.
+        hand.trackpad_activators_redundant = this->compute_trackpad_activators_redundant(
+            (VRRuntime::Hand)i, current_interaction_profile, touchpad_action);
+
+        const auto trackpad_claimed = VR::get()->owns_trackpad((VRRuntime::Hand)i);
+
         for (auto& it : hand.profiles[current_interaction_profile].vector_activators) {
             const auto activator = it.first;
             const auto modifier = hand.profiles[current_interaction_profile].action_vector_associations[activator];
+
+            // These synthesize A/B/thumbstick-click from trackpad regions, which predates the
+            // trackpad DPad/menu mapping and reads the same pad. Whichever of the two the user
+            // enabled owns it; running both makes one press fire a DPad direction and a button.
+            if (trackpad_claimed && modifier == touchpad_action && modifier != XR_NULL_HANDLE) {
+                continue;
+            }
 
             if (this->is_action_active(activator, (VRRuntime::Hand)i)) {
                 const auto axis = this->get_action_axis(modifier, (VRRuntime::Hand)i);
@@ -1328,6 +1345,46 @@ float OpenXR::get_action_float(XrAction action, VRRuntime::Hand hand, bool* out_
     }
 
     return data.currentState;
+}
+
+bool OpenXR::compute_trackpad_activators_redundant(VRRuntime::Hand hand, const std::string& interaction_profile, XrAction touchpad_action) const {
+    if (hand > VRRuntime::Hand::RIGHT || touchpad_action == XR_NULL_HANDLE) {
+        return true;
+    }
+
+    const auto profile_it = this->hands[hand].profiles.find(interaction_profile);
+
+    if (profile_it == this->hands[hand].profiles.end()) {
+        return true;
+    }
+
+    const auto& profile = profile_it->second;
+
+    for (const auto& [activator, outputs] : profile.vector_activators) {
+        const auto association = profile.action_vector_associations.find(activator);
+
+        // Only activators reading the trackpad contend with the trackpad DPad. Ones driven by
+        // another vector2 source (a thumbstick, say) are unaffected either way.
+        if (association == profile.action_vector_associations.end() || association->second != touchpad_action) {
+            continue;
+        }
+
+        for (const auto& output : outputs) {
+            const auto name = this->action_set.action_names.find(output.action);
+
+            if (name == this->action_set.action_names.end()) {
+                continue;
+            }
+
+            // path_map only holds bindings the runtime accepted for this profile, so a miss means
+            // the pad is this button's only source and taking the pad away would strand it.
+            if (!profile.path_map.contains(name->second)) {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 std::string OpenXR::translate_openvr_action_name(std::string action_name) const {
