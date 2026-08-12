@@ -10,6 +10,8 @@
 #include <utility/String.hpp>
 #include <imgui.h>
 
+#include "utility/Logging.hpp"
+
 #include <sdk/CVar.hpp>
 #include <sdk/Globals.hpp>
 
@@ -1287,6 +1289,45 @@ Vector2f OpenXR::get_action_axis(XrAction action, VRRuntime::Hand hand) const {
     }
 
     return *(Vector2f*)&axis.currentState;
+}
+
+float OpenXR::get_action_float(XrAction action, VRRuntime::Hand hand, bool* out_active) const {
+    if (out_active != nullptr) {
+        *out_active = false;
+    }
+
+    if (action == XR_NULL_HANDLE || hand > VRRuntime::Hand::RIGHT) {
+        return 0.0f;
+    }
+
+    // Reading a non-float action as a float is a guaranteed XR_ERROR_ACTION_TYPE_MISMATCH,
+    // so bail before the call rather than logging every frame.
+    if (!this->action_set.float_actions.contains(action)) {
+        return 0.0f;
+    }
+
+    XrActionStateGetInfo get_info{XR_TYPE_ACTION_STATE_GET_INFO};
+    get_info.action = action;
+    get_info.subactionPath = this->hands[hand].path;
+
+    XrActionStateFloat data{XR_TYPE_ACTION_STATE_FLOAT};
+    auto result = xrGetActionStateFloat(this->session, &get_info, &data);
+
+    if (result != XR_SUCCESS) {
+        // Polled every frame, so this must not spam the log.
+        SPDLOG_ERROR_EVERY_N_SEC(1, "[VR] Failed to get float action state: {}", this->get_result_string(result));
+        return 0.0f;
+    }
+
+    if (data.isActive != XR_TRUE) {
+        return 0.0f;
+    }
+
+    if (out_active != nullptr) {
+        *out_active = true;
+    }
+
+    return data.currentState;
 }
 
 std::string OpenXR::translate_openvr_action_name(std::string action_name) const {

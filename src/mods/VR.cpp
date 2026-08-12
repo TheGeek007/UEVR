@@ -3312,10 +3312,10 @@ float VR::get_action_analog(vr::VRActionHandle_t action, vr::VRInputValueHandle_
         }
 
         return data.x;
+    } else if (get_runtime()->is_openxr()) {
+        return m_openxr->get_action_float((XrAction)action, (VRRuntime::Hand)source, out_active);
     }
 
-    // OpenXR has no scalar float getter yet, so out_active stays false and callers
-    // fall back to the digital action rather than reading a value that is always zero.
     return 0.0f;
 }
 

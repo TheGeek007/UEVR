@@ -158,6 +158,10 @@ public:
     bool is_action_active(std::string_view action_name, VRRuntime::Hand hand) const;
     bool is_action_active_once(std::string_view action_name, VRRuntime::Hand hand) const;
     Vector2f get_action_axis(XrAction action, VRRuntime::Hand hand) const;
+    // Reads a float action's actual value rather than boolean-izing it like is_action_active does.
+    // out_active reports whether the runtime has the action bound, so callers can fall back to a
+    // digital equivalent on controllers that expose no analog component.
+    float get_action_float(XrAction action, VRRuntime::Hand hand, bool* out_active = nullptr) const;
     std::string translate_openvr_action_name(std::string action_name) const;
 
     Vector2f get_stick_axis(VRRuntime::Hand hand) const;
@@ -435,6 +439,10 @@ public:
         {"/user/hand/*/input/aim/pose", "pose"},
         {"/user/hand/*/input/grip/pose", "grippose"},
         {"/user/hand/*/input/trigger", "trigger"}, // oculus?
+        // Same physical path as the boolean above. A component-less identifier resolves to the
+        // default component for the action's type, so the float action lands on trigger/value
+        // while the boolean one lands on the click.
+        {"/user/hand/*/input/trigger", "triggeraxis"}, // oculus/vive/index
         {"/user/hand/*/input/squeeze", "grip"}, // oculus/vive/index
 
         {"/user/hand/left/input/x/click", "abuttonleft"}, // oculus?
