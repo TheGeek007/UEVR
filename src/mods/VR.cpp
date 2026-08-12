@@ -2540,11 +2540,11 @@ void VR::on_draw_sidebar_entry(std::string_view name) {
                                "On the right trackpad, up sends Start and down sends Back.");
 
             // A controller whose trackpad is its only source of A/B and thumbstick-click keeps the
-            // pad, so these would be ignored on it. Grey them out rather than letting them read as
-            // enabled while doing nothing, and say why on hover.
-            const auto draw_trackpad_toggle = [](const ModToggle::Ptr& toggle, const char* label, bool available) {
+            // pad, so nothing here applies on it. Grey these out rather than letting them read as
+            // live while doing nothing, and say why on hover.
+            const auto draw_trackpad_option = [](auto& option, const char* label, bool available) {
                 ImGui::BeginDisabled(!available);
-                toggle->draw(label);
+                option->draw(label);
                 ImGui::EndDisabled();
 
                 if (!available && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
@@ -2553,12 +2553,18 @@ void VR::on_draw_sidebar_entry(std::string_view name) {
                 }
             };
 
-            draw_trackpad_toggle(m_trackpad_dpad, "Left Trackpad as DPad", can_own_trackpad(VRRuntime::Hand::LEFT));
-            ImGui::SameLine();
-            draw_trackpad_toggle(m_trackpad_menu, "Right Trackpad as Start/Back", can_own_trackpad(VRRuntime::Hand::RIGHT));
+            const auto left_available = can_own_trackpad(VRRuntime::Hand::LEFT);
+            const auto right_available = can_own_trackpad(VRRuntime::Hand::RIGHT);
 
-            m_trackpad_activation->draw("Trackpad Activation");
-            m_trackpad_deadzone->draw("Trackpad Deadzone");
+            draw_trackpad_option(m_trackpad_dpad, "Left Trackpad as DPad", left_available);
+            ImGui::SameLine();
+            draw_trackpad_option(m_trackpad_menu, "Right Trackpad as Start/Back", right_available);
+
+            // These shape both mappings, so either pad being ours is enough to keep them live.
+            const auto either_available = left_available || right_available;
+
+            draw_trackpad_option(m_trackpad_activation, "Trackpad Activation", either_available);
+            draw_trackpad_option(m_trackpad_deadzone, "Trackpad Deadzone", either_available);
 
             ImGui::TreePop();
         }
