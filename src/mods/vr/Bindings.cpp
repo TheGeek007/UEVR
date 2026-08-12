@@ -42,6 +42,14 @@ std::string VR::actions_json = R"(
       "type": "boolean"
     },
     {
+      "name": "/actions/default/in/TouchpadTouch",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/default/in/TriggerAxis",
+      "type": "vector1"
+    },
+    {
       "name": "/actions/default/in/Joystick",
       "type": "vector2"
     },
@@ -250,18 +258,24 @@ std::string VR::bindings_oculus_touch_json = R"(
                "inputs" : {
                   "click" : {
                      "output" : "/actions/default/in/trigger"
+                  },
+                  "pull" : {
+                     "output" : "/actions/default/in/triggeraxis"
                   }
                },
-               "mode" : "button",
+               "mode" : "trigger",
                "path" : "/user/hand/left/input/trigger"
             },
             {
                "inputs" : {
                   "click" : {
                      "output" : "/actions/default/in/trigger"
+                  },
+                  "pull" : {
+                     "output" : "/actions/default/in/triggeraxis"
                   }
                },
-               "mode" : "button",
+               "mode" : "trigger",
                "path" : "/user/hand/right/input/trigger"
             },
             {
@@ -497,6 +511,9 @@ std::string VR::bindings_vive_controller = R"(
                "inputs" : {
                   "click" : {
                      "output" : "/actions/default/in/trigger"
+                  },
+                  "pull" : {
+                     "output" : "/actions/default/in/triggeraxis"
                   }
                },
                "mode" : "trigger",
@@ -536,6 +553,9 @@ std::string VR::bindings_vive_controller = R"(
                "inputs" : {
                   "click" : {
                      "output" : "/actions/default/in/trigger"
+                  },
+                  "pull" : {
+                     "output" : "/actions/default/in/triggeraxis"
                   }
                },
                "mode" : "trigger",
@@ -628,9 +648,12 @@ std::string VR::bindings_knuckles = R"(
                "inputs" : {
                   "click" : {
                      "output" : "/actions/default/in/trigger"
+                  },
+                  "pull" : {
+                     "output" : "/actions/default/in/triggeraxis"
                   }
                },
-               "mode" : "button",
+               "mode" : "trigger",
                "path" : "/user/hand/left/input/trigger"
             },
             {
@@ -646,6 +669,9 @@ std::string VR::bindings_knuckles = R"(
                "inputs" : {
                   "click" : {
                      "output" : "/actions/default/in/touchpadclick"
+                  },
+                  "touch" : {
+                     "output" : "/actions/default/in/touchpadtouch"
                   }
                },
                "mode" : "button",
@@ -763,6 +789,9 @@ std::string VR::bindings_knuckles = R"(
                "inputs" : {
                   "click" : {
                      "output" : "/actions/default/in/touchpadclick"
+                  },
+                  "touch" : {
+                     "output" : "/actions/default/in/touchpadtouch"
                   }
                },
                "mode" : "button",
@@ -772,9 +801,12 @@ std::string VR::bindings_knuckles = R"(
                "inputs" : {
                   "click" : {
                      "output" : "/actions/default/in/trigger"
+                  },
+                  "pull" : {
+                     "output" : "/actions/default/in/triggeraxis"
                   }
                },
-               "mode" : "button",
+               "mode" : "trigger",
                "path" : "/user/hand/right/input/trigger"
             },
             {

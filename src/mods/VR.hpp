@@ -60,6 +60,14 @@ public:
         GESTURE_HEAD_RIGHT,
     };
 
+    // Which trackpad component gates a region press. Click avoids accidental input from a
+    // resting thumb but needs a firm press on the Index's force-based pad; touch actuates
+    // faster but fires whenever the thumb is down.
+    enum TrackpadActivation : int32_t {
+        TRACKPAD_CLICK,
+        TRACKPAD_TOUCH,
+    };
+
     enum HORIZONTAL_PROJECTION_OVERRIDE : int32_t {
         HORIZONTAL_DEFAULT,
         HORIZONTAL_SYMMETRIC,
@@ -75,9 +83,14 @@ public:
     static const inline std::string s_action_pose = "/actions/default/in/Pose";
     static const inline std::string s_action_grip_pose = "/actions/default/in/GripPose";
     static const inline std::string s_action_trigger = "/actions/default/in/Trigger";
+    static const inline std::string s_action_trigger_axis = "/actions/default/in/TriggerAxis";
     static const inline std::string s_action_grip = "/actions/default/in/Grip";
     static const inline std::string s_action_joystick = "/actions/default/in/Joystick";
     static const inline std::string s_action_joystick_click = "/actions/default/in/JoystickClick";
+
+    static const inline std::string s_action_touchpad = "/actions/default/in/Touchpad";
+    static const inline std::string s_action_touchpad_click = "/actions/default/in/TouchpadClick";
+    static const inline std::string s_action_touchpad_touch = "/actions/default/in/TouchpadTouch";
 
     static const inline std::string s_action_a_button_left = "/actions/default/in/AButtonLeft";
     static const inline std::string s_action_b_button_left = "/actions/default/in/BButtonLeft";
@@ -225,6 +238,18 @@ public:
         return false;
     }
     Vector2f get_joystick_axis(vr::VRInputValueHandle_t handle) const;
+
+    // Generalized analog readers. get_joystick_axis above only ever reads the Joystick action
+    // regardless of the handle passed to it; these read whichever action is asked for, which is
+    // what makes the trackpad and the analog trigger readable at all.
+    // out_active reports whether the runtime actually has the action bound, which lets callers
+    // fall back to a digital equivalent on controllers that don't provide an analog component.
+    Vector2f get_action_axis(vr::VRActionHandle_t action, vr::VRInputValueHandle_t source) const;
+    float get_action_analog(vr::VRActionHandle_t action, vr::VRInputValueHandle_t source, bool* out_active = nullptr) const;
+
+    // Resolves one hand's trackpad into a DPadGestureState::Direction bitmask, honoring the
+    // trackpad activation mode and deadzone. Returns 0 when the trackpad isn't engaged or bound.
+    uint8_t get_trackpad_direction(vr::VRInputValueHandle_t source) const;
 
     vr::VRActionHandle_t get_action_handle(std::string_view action_path) {
         if (auto it = m_action_handles.find(action_path.data()); it != m_action_handles.end()) {
@@ -592,6 +617,10 @@ public:
         return (DPadMethod)m_dpad_shifting_method->value();
     }
 
+    TrackpadActivation get_trackpad_activation() const {
+        return (TrackpadActivation)m_trackpad_activation->value();
+    }
+
     bool is_snapturn_enabled() const {
         return m_snapturn->value();
     }
@@ -761,10 +790,15 @@ private:
     // Action handles
     vr::VRActionHandle_t m_action_pose{ };
     vr::VRActionHandle_t m_action_trigger{ };
+    vr::VRActionHandle_t m_action_trigger_axis{ };
     vr::VRActionHandle_t m_action_grip{ };
     vr::VRActionHandle_t m_action_grip_pose{ };
     vr::VRActionHandle_t m_action_joystick{};
     vr::VRActionHandle_t m_action_joystick_click{};
+
+    vr::VRActionHandle_t m_action_touchpad{};
+    vr::VRActionHandle_t m_action_touchpad_click{};
+    vr::VRActionHandle_t m_action_touchpad_touch{};
 
     vr::VRActionHandle_t m_action_a_button_right{};
     vr::VRActionHandle_t m_action_a_button_touch_right{};
@@ -790,9 +824,14 @@ private:
         { s_action_pose, m_action_pose },
         { s_action_grip_pose, m_action_grip_pose },
         { s_action_trigger, m_action_trigger },
+        { s_action_trigger_axis, m_action_trigger_axis },
         { s_action_grip, m_action_grip },
         { s_action_joystick, m_action_joystick },
         { s_action_joystick_click, m_action_joystick_click },
+
+        { s_action_touchpad, m_action_touchpad },
+        { s_action_touchpad_click, m_action_touchpad_click },
+        { s_action_touchpad_touch, m_action_touchpad_touch },
 
         { s_action_a_button_left, m_action_a_button_left },
         { s_action_b_button_left, m_action_b_button_left },
@@ -868,6 +907,11 @@ private:
         "Gesture (Head) + Right Joystick",
     };
 
+    static const inline std::vector<std::string> s_trackpad_activation_names {
+        "Click",
+        "Touch",
+    };
+
     static const inline std::vector<std::string> s_horizontal_projection_override_names{
         "Raw / default",
         "Symmetrical",
@@ -927,6 +971,13 @@ private:
     const ModSlider::Ptr m_aim_speed{ ModSlider::create(generate_name("AimSpeed"), 0.01f, 25.0f, 15.0f) };
     const ModToggle::Ptr m_dpad_shifting{ ModToggle::create(generate_name("DPadShifting"), true) };
     const ModCombo::Ptr m_dpad_shifting_method{ ModCombo::create(generate_name("DPadShiftingMethod"), s_dpad_method_names, DPadMethod::RIGHT_TOUCH) };
+
+    // Trackpad input (Index/knuckles and any other controller that binds the Touchpad actions).
+    // Left trackpad drives the XInput DPad, right trackpad drives Start/Back.
+    const ModToggle::Ptr m_trackpad_dpad{ ModToggle::create(generate_name("TrackpadDPad"), true) };
+    const ModToggle::Ptr m_trackpad_menu{ ModToggle::create(generate_name("TrackpadMenuButtons"), true) };
+    const ModCombo::Ptr m_trackpad_activation{ ModCombo::create(generate_name("TrackpadActivation"), s_trackpad_activation_names, TrackpadActivation::TRACKPAD_CLICK) };
+    const ModSlider::Ptr m_trackpad_deadzone{ ModSlider::create(generate_name("TrackpadDeadzone"), 0.0f, 0.9f, 0.35f) };
     
     struct DPadGestureState {
         std::recursive_mutex mtx{};
@@ -1060,6 +1111,10 @@ public:
             *m_aim_interp,
             *m_dpad_shifting,
             *m_dpad_shifting_method,
+            *m_trackpad_dpad,
+            *m_trackpad_menu,
+            *m_trackpad_activation,
+            *m_trackpad_deadzone,
             *m_motion_controls_inactivity_timer,
             *m_joystick_deadzone,
             *m_camera_forward_offset,

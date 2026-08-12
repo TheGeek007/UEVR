@@ -667,6 +667,16 @@ bool VR::is_any_action_down() {
             continue;
         }
 
+        if (it.second == m_action_touchpad_touch) {
+            continue;
+        }
+
+        // Analog actions can't be queried as digital ones; skip them rather than
+        // making a call that always reports inactive.
+        if (it.second == m_action_touchpad || it.second == m_action_trigger_axis) {
+            continue;
+        }
+
         if (is_action_active(it.second, left_joystick) || is_action_active(it.second, right_joystick)) {
             return true;
         }
@@ -820,11 +830,23 @@ void VR::on_xinput_get_state(uint32_t* retval, uint32_t user_index, XINPUT_STATE
     const auto is_left_trigger_down = is_action_active(m_action_trigger, left_joystick);
     const auto is_right_trigger_down = is_action_active(m_action_trigger, right_joystick);
 
-    if (is_left_trigger_down) {
+    // Prefer the analog pull when the runtime reports it bound, so games that read trigger
+    // travel (throttles, bow draw, half-press aim) get the real value. Controllers and runtimes
+    // that only expose an on/off trigger fall back to the digital click at full deflection.
+    bool is_left_trigger_analog{false};
+    bool is_right_trigger_analog{false};
+    const auto left_trigger_pull = get_action_analog(m_action_trigger_axis, left_joystick, &is_left_trigger_analog);
+    const auto right_trigger_pull = get_action_analog(m_action_trigger_axis, right_joystick, &is_right_trigger_analog);
+
+    if (is_left_trigger_analog) {
+        state->Gamepad.bLeftTrigger = (uint8_t)(std::clamp(left_trigger_pull, 0.0f, 1.0f) * 255.0f);
+    } else if (is_left_trigger_down) {
         state->Gamepad.bLeftTrigger = 255;
     }
 
-    if (is_right_trigger_down) {
+    if (is_right_trigger_analog) {
+        state->Gamepad.bRightTrigger = (uint8_t)(std::clamp(right_trigger_pull, 0.0f, 1.0f) * 255.0f);
+    } else if (is_right_trigger_down) {
         state->Gamepad.bRightTrigger = 255;
     }
 
@@ -863,6 +885,47 @@ void VR::on_xinput_get_state(uint32_t* retval, uint32_t user_index, XINPUT_STATE
         state->Gamepad.wButtons |= XINPUT_GAMEPAD_DPAD_LEFT;
     }
 
+    // Trackpad-driven DPad and menu buttons. On Index (knuckles) both trackpads are otherwise
+    // unread, which makes them a free home for the DPad, and for Start/Back which are otherwise
+    // only reachable through the system button that SteamVR normally reserves for its dashboard.
+    // Controllers that bind their trackpad to the Joystick action instead (Vive wands) report an
+    // inactive Touchpad action here, so this stays inert for them.
+    uint8_t trackpad_dpad_direction{DPadGestureState::Direction::NONE};
+
+    if (m_trackpad_dpad->value()) {
+        trackpad_dpad_direction = get_trackpad_direction(left_joystick);
+
+        if ((trackpad_dpad_direction & DPadGestureState::Direction::UP) != 0) {
+            state->Gamepad.wButtons |= XINPUT_GAMEPAD_DPAD_UP;
+        }
+
+        if ((trackpad_dpad_direction & DPadGestureState::Direction::RIGHT) != 0) {
+            state->Gamepad.wButtons |= XINPUT_GAMEPAD_DPAD_RIGHT;
+        }
+
+        if ((trackpad_dpad_direction & DPadGestureState::Direction::DOWN) != 0) {
+            state->Gamepad.wButtons |= XINPUT_GAMEPAD_DPAD_DOWN;
+        }
+
+        if ((trackpad_dpad_direction & DPadGestureState::Direction::LEFT) != 0) {
+            state->Gamepad.wButtons |= XINPUT_GAMEPAD_DPAD_LEFT;
+        }
+    }
+
+    if (m_trackpad_menu->value()) {
+        const auto trackpad_menu_direction = get_trackpad_direction(right_joystick);
+
+        if ((trackpad_menu_direction & DPadGestureState::Direction::UP) != 0) {
+            state->Gamepad.wButtons |= XINPUT_GAMEPAD_START;
+            *retval = ERROR_SUCCESS;
+        }
+
+        if ((trackpad_menu_direction & DPadGestureState::Direction::DOWN) != 0) {
+            state->Gamepad.wButtons |= XINPUT_GAMEPAD_BACK;
+            *retval = ERROR_SUCCESS;
+        }
+    }
+
     const auto left_joystick_axis = get_joystick_axis(left_joystick);
     const auto right_joystick_axis = get_joystick_axis(right_joystick);
 
@@ -875,7 +938,13 @@ void VR::on_xinput_get_state(uint32_t* retval, uint32_t user_index, XINPUT_STATE
     state->Gamepad.sThumbRX = (int16_t)std::clamp<float>(((float)state->Gamepad.sThumbRX + right_joystick_axis.x * 32767.0f), -32767.0f, 32767.0f);
     state->Gamepad.sThumbRY = (int16_t)std::clamp<float>(((float)state->Gamepad.sThumbRY + right_joystick_axis.y * 32767.0f), -32767.0f, 32767.0f);
 
-    bool already_dpad_shifted{false};
+    // If a real DPad source is already producing input — the trackpad, or a DPad action the
+    // binding actually maps — don't also run the shifting fallback below, which would steal
+    // a thumbstick to synthesize a DPad we already have.
+    bool already_dpad_shifted{
+        trackpad_dpad_direction != DPadGestureState::Direction::NONE ||
+        is_dpad_up_down || is_dpad_right_down || is_dpad_down_down || is_dpad_left_down
+    };
 
     if (m_dpad_gesture_state.direction != DPadGestureState::Direction::NONE) {
         already_dpad_shifted = true;
@@ -2465,6 +2534,21 @@ void VR::on_draw_sidebar_entry(std::string_view name) {
         }
 
         ImGui::SetNextItemOpen(true, ImGuiCond_::ImGuiCond_Once);
+        if (ImGui::TreeNode("Trackpad")) {
+            ImGui::TextWrapped("For controllers with trackpads (Valve Index). Ignored on controllers without one. "
+                               "On the right trackpad, up sends Start and down sends Back.");
+
+            m_trackpad_dpad->draw("Left Trackpad as DPad");
+            ImGui::SameLine();
+            m_trackpad_menu->draw("Right Trackpad as Start/Back");
+
+            m_trackpad_activation->draw("Trackpad Activation");
+            m_trackpad_deadzone->draw("Trackpad Deadzone");
+
+            ImGui::TreePop();
+        }
+
+        ImGui::SetNextItemOpen(true, ImGuiCond_::ImGuiCond_Once);
         if (ImGui::TreeNode("Aim Method")) {
             ImGui::TextWrapped("Some games may not work with this enabled.");
             if (m_aim_method->draw("Type")) {
@@ -3173,6 +3257,91 @@ Vector2f VR::get_joystick_axis(vr::VRInputValueHandle_t handle) const {
     }
 
     return Vector2f{};
+}
+
+Vector2f VR::get_action_axis(vr::VRActionHandle_t action, vr::VRInputValueHandle_t source) const {
+    ZoneScopedN(__FUNCTION__);
+
+    if (!get_runtime()->loaded || action == vr::k_ulInvalidActionHandle) {
+        return Vector2f{};
+    }
+
+    if (get_runtime()->is_openvr()) {
+        vr::InputAnalogActionData_t data{};
+
+        if (vr::VRInput()->GetAnalogActionData(action, &data, sizeof(data), source) != vr::VRInputError_None) {
+            return Vector2f{};
+        }
+
+        if (!data.bActive) {
+            return Vector2f{};
+        }
+
+        return Vector2f{ data.x, data.y };
+    } else if (get_runtime()->is_openxr()) {
+        return m_openxr->get_action_axis((XrAction)action, (VRRuntime::Hand)source);
+    }
+
+    return Vector2f{};
+}
+
+float VR::get_action_analog(vr::VRActionHandle_t action, vr::VRInputValueHandle_t source, bool* out_active) const {
+    ZoneScopedN(__FUNCTION__);
+
+    if (out_active != nullptr) {
+        *out_active = false;
+    }
+
+    if (!get_runtime()->loaded || action == vr::k_ulInvalidActionHandle) {
+        return 0.0f;
+    }
+
+    if (get_runtime()->is_openvr()) {
+        vr::InputAnalogActionData_t data{};
+
+        if (vr::VRInput()->GetAnalogActionData(action, &data, sizeof(data), source) != vr::VRInputError_None) {
+            return 0.0f;
+        }
+
+        if (!data.bActive) {
+            return 0.0f;
+        }
+
+        if (out_active != nullptr) {
+            *out_active = true;
+        }
+
+        return data.x;
+    }
+
+    // OpenXR has no scalar float getter yet, so out_active stays false and callers
+    // fall back to the digital action rather than reading a value that is always zero.
+    return 0.0f;
+}
+
+uint8_t VR::get_trackpad_direction(vr::VRInputValueHandle_t source) const {
+    ZoneScopedN(__FUNCTION__);
+
+    const auto engaged = get_trackpad_activation() == TrackpadActivation::TRACKPAD_CLICK
+        ? is_action_active(m_action_touchpad_click, source)
+        : is_action_active(m_action_touchpad_touch, source);
+
+    if (!engaged) {
+        return DPadGestureState::Direction::NONE;
+    }
+
+    const auto axis = get_action_axis(m_action_touchpad, source);
+
+    if (glm::length(glm::vec2(axis.x, axis.y)) < m_trackpad_deadzone->value()) {
+        return DPadGestureState::Direction::NONE;
+    }
+
+    // Resolve to the dominant axis so a slightly-off press reads as one direction, not a diagonal.
+    if (glm::abs(axis.x) > glm::abs(axis.y)) {
+        return axis.x > 0.0f ? DPadGestureState::Direction::RIGHT : DPadGestureState::Direction::LEFT;
+    }
+
+    return axis.y > 0.0f ? DPadGestureState::Direction::UP : DPadGestureState::Direction::DOWN;
 }
 
 Vector2f VR::get_left_stick_axis() const {
