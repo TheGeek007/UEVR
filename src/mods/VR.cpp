@@ -2539,9 +2539,23 @@ void VR::on_draw_sidebar_entry(std::string_view name) {
             ImGui::TextWrapped("For controllers with trackpads (Valve Index). Ignored on controllers without one. "
                                "On the right trackpad, up sends Start and down sends Back.");
 
-            m_trackpad_dpad->draw("Left Trackpad as DPad");
+            // A controller whose trackpad is its only source of A/B and thumbstick-click keeps the
+            // pad, so these would be ignored on it. Grey them out rather than letting them read as
+            // enabled while doing nothing, and say why on hover.
+            const auto draw_trackpad_toggle = [](const ModToggle::Ptr& toggle, const char* label, bool available) {
+                ImGui::BeginDisabled(!available);
+                toggle->draw(label);
+                ImGui::EndDisabled();
+
+                if (!available && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                    ImGui::SetTooltip("This controller's trackpad is its only source of the A/B and thumbstick click "
+                                      "buttons, so it stays mapped to those.");
+                }
+            };
+
+            draw_trackpad_toggle(m_trackpad_dpad, "Left Trackpad as DPad", can_own_trackpad(VRRuntime::Hand::LEFT));
             ImGui::SameLine();
-            m_trackpad_menu->draw("Right Trackpad as Start/Back");
+            draw_trackpad_toggle(m_trackpad_menu, "Right Trackpad as Start/Back", can_own_trackpad(VRRuntime::Hand::RIGHT));
 
             m_trackpad_activation->draw("Trackpad Activation");
             m_trackpad_deadzone->draw("Trackpad Deadzone");

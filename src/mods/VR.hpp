@@ -621,17 +621,10 @@ public:
         return (TrackpadActivation)m_trackpad_activation->value();
     }
 
-    // Whether the trackpad DPad/menu mapping consumes this hand's trackpad. The pad is one physical
-    // surface, so anything else that reads it (the OpenXR region-to-button activators) has to stand
-    // down for that hand while this owns it, or a single press produces two inputs. Both sides ask
-    // here so they can't disagree about who has it.
-    bool owns_trackpad(VRRuntime::Hand hand) const {
-        const auto enabled = hand == VRRuntime::Hand::LEFT ? m_trackpad_dpad->value() : m_trackpad_menu->value();
-
-        if (!enabled) {
-            return false;
-        }
-
+    // Whether this hand's trackpad is available to the DPad/menu mapping at all, setting aside
+    // whether the user asked for it. Kept separate from owns_trackpad so the UI can grey out a
+    // toggle the controller in use would ignore without the toggle's own state deciding that.
+    bool can_own_trackpad(VRRuntime::Hand hand) const {
         // On OpenXR the pad may be the only way to reach A/B and thumbstick-click, on controllers
         // that have no such buttons of their own. Those keep it; the DPad mapping isn't worth
         // making real buttons unreachable. OpenVR routes a padless controller's pad to Joystick
@@ -641,6 +634,16 @@ public:
         }
 
         return true;
+    }
+
+    // Whether the trackpad DPad/menu mapping consumes this hand's trackpad. The pad is one physical
+    // surface, so anything else that reads it (the OpenXR region-to-button activators) has to stand
+    // down for that hand while this owns it, or a single press produces two inputs. Both sides ask
+    // here so they can't disagree about who has it.
+    bool owns_trackpad(VRRuntime::Hand hand) const {
+        const auto enabled = hand == VRRuntime::Hand::LEFT ? m_trackpad_dpad->value() : m_trackpad_menu->value();
+
+        return enabled && can_own_trackpad(hand);
     }
 
     bool is_snapturn_enabled() const {
