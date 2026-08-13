@@ -14,7 +14,7 @@ add_link_options("$<$<CONFIG:Release>:/DEBUG>")
 add_link_options("$<$<CONFIG:Release>:/OPT:REF>")
 add_link_options("$<$<CONFIG:Release>:/OPT:ICF>")
 """
-cmake-after = """
+cmake-after = '''
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /MP")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
 
@@ -36,7 +36,77 @@ endif()
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 add_subdirectory(dependencies/submodules/UESDK)
-"""
+
+# Both pinned DirectXTK versions hand CompileShaders.cmd to `cmake -E env` as a
+# bare relative filename. CMake cannot resolve that into a process even though
+# WORKING_DIRECTORY is set correctly, so their shader custom build step fails on
+# every clean build with "no such file or directory". The identical script runs
+# fine when given an absolute path.
+#
+# Pre-generating the headers and letting the custom build step skip itself is
+# not enough: MSBuild decides a CustomBuild is up to date from its tracker logs,
+# and on a genuinely fresh tree there are none, so the broken command runs at
+# least once regardless of timestamps. Instead both projects are switched to
+# USE_PREBUILT_SHADERS, which stops the custom command from being created at
+# all, and the headers are compiled here at configure time. CMake only checks
+# that a listed source file exists at generate time, so producing it from
+# cmake-after is in time.
+#
+# Remove all of this once the pinned DirectXTK tags carry the upstream fix.
+function(uevr_precompile_dxtk_shaders _name _src_dir _out_dir)
+    set(_sentinel "${_out_dir}/SpriteEffect_SpriteVertexShader.inc")
+
+    if(EXISTS "${_sentinel}")
+        return()
+    endif()
+
+    # The scripts look for fxc/dxc under %WindowsSdkVerBinPath%<arch>\ before
+    # falling back to PATH, and that variable is only set inside a Visual Studio
+    # developer environment - which a plain configure is not. Resolve it once.
+    if(NOT UEVR_WINSDK_VER_BIN_DIR)
+        get_filename_component(_kits10
+            "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots;KitsRoot10]"
+            ABSOLUTE)
+        file(GLOB _sdk_arch_dirs "${_kits10}/bin/*/x64")
+        list(REVERSE _sdk_arch_dirs) # newest SDK first
+        find_program(UEVR_FXC_EXECUTABLE NAMES fxc HINTS ${_sdk_arch_dirs})
+
+        if(NOT UEVR_FXC_EXECUTABLE)
+            message(FATAL_ERROR
+                "uevr: could not locate fxc.exe in any Windows SDK. It ships with "
+                "the Windows SDK component of Visual Studio's Desktop C++ workload.")
+        endif()
+
+        get_filename_component(_arch_dir "${UEVR_FXC_EXECUTABLE}" DIRECTORY)
+        get_filename_component(_ver_dir "${_arch_dir}" DIRECTORY)
+        set(UEVR_WINSDK_VER_BIN_DIR "${_ver_dir}"
+            CACHE INTERNAL "Windows SDK versioned bin directory")
+    endif()
+
+    # Trailing separator matters: the scripts concatenate the arch directly onto it.
+    string(REPLACE "/" "\\" _sdk_native "${UEVR_WINSDK_VER_BIN_DIR}/")
+    string(REPLACE "/" "\\" _script_native "${_src_dir}/Src/Shaders/CompileShaders.cmd")
+
+    message(STATUS "Precompiling ${_name} HLSL shaders...")
+    file(MAKE_DIRECTORY "${_out_dir}")
+
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E env
+            "CompileShadersOutput=${_out_dir}"
+            "WindowsSdkVerBinPath=${_sdk_native}"
+            "${_script_native}"
+        WORKING_DIRECTORY "${_src_dir}/Src/Shaders"
+        RESULT_VARIABLE _result
+        OUTPUT_VARIABLE _output
+        ERROR_VARIABLE _output
+    )
+
+    if(NOT _result EQUAL 0 OR NOT EXISTS "${_sentinel}")
+        message(FATAL_ERROR
+            "uevr: ${_name} shader precompile failed (${_result}):\n${_output}")
+    endif()
+endfunction()
+'''
 
 [target.spdlog]
 type = "static"
@@ -95,11 +165,21 @@ git = "https://github.com/microsoft/DirectXTK"
 tag = "f5026eb34e7053b1aff325d38db107703f394974"
 cmake-before="""
 set(BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+
+# See uevr_precompile_dxtk_shaders. COMPILED_SHADERS must be set explicitly when
+# USE_PREBUILT_SHADERS is on, and must differ per project: both emit an .inc of
+# the same name for different APIs, so a shared directory would collide.
+set(USE_PREBUILT_SHADERS ON CACHE BOOL "" FORCE)
+set(COMPILED_SHADERS "${CMAKE_BINARY_DIR}/dxtk-shaders/directxtk")
 """
 cmake-after="""
 if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 19.35)
     target_compile_options(DirectXTK PRIVATE /Zc:templateScope-)
 endif()
+
+uevr_precompile_dxtk_shaders(DirectXTK
+    "${directxtk_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/dxtk-shaders/directxtk")
+unset(COMPILED_SHADERS)
 """
 
 [fetch-content.directxtk12]
@@ -107,11 +187,19 @@ git = "https://github.com/microsoft/DirectXTK12"
 tag = "528801aa6dd8d628c2f756c41a76d300f47de478"
 cmake-before="""
 set(BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+
+# Separate shader directory from DirectXTK - see the note in that fetch block.
+set(USE_PREBUILT_SHADERS ON CACHE BOOL "" FORCE)
+set(COMPILED_SHADERS "${CMAKE_BINARY_DIR}/dxtk-shaders/directxtk12")
 """
 cmake-after="""
 if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 19.35)
     target_compile_options(DirectXTK12 PRIVATE /Zc:templateScope-)
 endif()
+
+uevr_precompile_dxtk_shaders(DirectXTK12
+    "${directxtk12_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/dxtk-shaders/directxtk12")
+unset(COMPILED_SHADERS)
 """
 
 [target.openvr]
