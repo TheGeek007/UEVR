@@ -183,6 +183,127 @@ void OverlayComponent::update_input_mouse_emulation() {
     }
 }
 
+void OverlayComponent::record_framework_intersect_debug(const glm::vec3& controller_pos, const glm::quat& controller_rot,
+    const Matrix4x4f& quad_matrix, float width_meters, float height_meters, const glm::vec2& swapchain_size)
+{
+    if (!m_framework_mouse_emulation_debug->value()) {
+        m_framework_intersect_debug.valid = false;
+        return;
+    }
+
+    auto& dbg = m_framework_intersect_debug;
+    dbg.valid = true;
+    dbg.controller_pos = controller_pos;
+    dbg.controller_rot = controller_rot;
+    dbg.ray_dir = controller_rot * glm::vec3{0.0f, 0.0f, -1.0f};
+    dbg.quad_pos = glm::vec3{quad_matrix[3]};
+    dbg.quad_rot = glm::quat_cast(quad_matrix);
+    dbg.quad_normal = glm::normalize(glm::vec3{quad_matrix[2]});
+    dbg.quad_width_meters = width_meters;
+    dbg.quad_height_meters = height_meters;
+    dbg.swapchain_size = swapchain_size;
+
+    dbg.ray_distance = 0.0f;
+    dbg.world_hit = {};
+    dbg.local_hit = {};
+    dbg.uv = {};
+    dbg.within_quad = false;
+    dbg.ray_hit_plane = glm::intersectRayPlane<glm::vec3>(controller_pos, dbg.ray_dir, dbg.quad_pos, dbg.quad_normal, dbg.ray_distance);
+
+    if (dbg.ray_hit_plane) {
+        dbg.world_hit = controller_pos + (dbg.ray_dir * dbg.ray_distance);
+        dbg.local_hit = glm::vec3{glm::inverse(quad_matrix) * glm::vec4{dbg.world_hit, 1.0f}};
+
+        const auto w_half = width_meters / 2.0f;
+        const auto h_half = height_meters / 2.0f;
+
+        dbg.uv = {
+            (dbg.local_hit.x + w_half) / width_meters,
+            (height_meters - (dbg.local_hit.y + h_half)) / height_meters
+        };
+        dbg.within_quad = dbg.local_hit.x >= -w_half && dbg.local_hit.x <= w_half &&
+                          dbg.local_hit.y >= -h_half && dbg.local_hit.y <= h_half;
+    }
+}
+
+void OverlayComponent::draw_mouse_emulation_debug() {
+    if (!m_framework_mouse_emulation_debug->value()) {
+        return;
+    }
+
+    auto& io = ImGui::GetIO();
+    auto* draw_list = ImGui::GetForegroundDrawList();
+    const auto& state = m_framework_intersect_state;
+    const auto& dbg = m_framework_intersect_debug;
+
+    // Red crosshair: the raw ray/quad intersection mapped into UI pixels.
+    // Drawn unconditionally on intersection so a mapping bug is visible as an offset,
+    // instead of the cursor silently not moving.
+    if (state.intersecting) {
+        const auto p = ImVec2{state.swapchain_intersection_point.x, state.swapchain_intersection_point.y};
+        draw_list->AddCircle(p, 12.0f, IM_COL32(255, 0, 0, 255), 16, 2.0f);
+        draw_list->AddLine(ImVec2{p.x - 20.0f, p.y}, ImVec2{p.x + 20.0f, p.y}, IM_COL32(255, 0, 0, 255), 2.0f);
+        draw_list->AddLine(ImVec2{p.x, p.y - 20.0f}, ImVec2{p.x, p.y + 20.0f}, IM_COL32(255, 0, 0, 255), 2.0f);
+    }
+
+    // Yellow: the lerped position mouse emulation feeds ImGui. Green: where ImGui's mouse actually is.
+    draw_list->AddCircleFilled(ImVec2{m_last_mouse_pos.x, m_last_mouse_pos.y}, 5.0f, IM_COL32(255, 255, 0, 255));
+    draw_list->AddCircle(io.MousePos, 8.0f, IM_COL32(0, 255, 0, 255), 12, 2.0f);
+
+    static int capture_index = 0;
+
+    const auto window_size = g_framework->get_last_window_size();
+    const auto window_pos = g_framework->get_last_window_pos();
+    const bool over_any_window = imgui::is_point_intersecting_any(m_last_mouse_pos.x, m_last_mouse_pos.y);
+
+    ImGui::SetNextWindowPos(ImVec2{10.0f, io.DisplaySize.y * 0.5f}, ImGuiCond_FirstUseEver);
+    ImGui::Begin("Mouse Emulation Debug", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+    ImGui::Text("intersecting: %d  within_quad: %d  ray_hit_plane: %d", state.intersecting, dbg.within_quad, dbg.ray_hit_plane);
+    ImGui::Text("uv: (%.4f, %.4f)", dbg.uv.x, dbg.uv.y);
+    ImGui::Text("swapchain_pt: (%.1f, %.1f)  swapchain: %.0fx%.0f", state.swapchain_intersection_point.x,
+        state.swapchain_intersection_point.y, dbg.swapchain_size.x, dbg.swapchain_size.y);
+    ImGui::Text("lerped: (%.1f, %.1f)  io.MousePos: (%.1f, %.1f)", m_last_mouse_pos.x, m_last_mouse_pos.y, io.MousePos.x, io.MousePos.y);
+    ImGui::Text("display: %.0fx%.0f  draw_cursor: %d  over_any_window: %d", io.DisplaySize.x, io.DisplaySize.y,
+        io.MouseDrawCursor, over_any_window);
+    ImGui::Text("F9: dump snapshot to log (captured: %d)", capture_index);
+    ImGui::End();
+
+    // F9 captures the full snapshot while the user holds the ray on a reference point (e.g. a menu corner)
+    static bool f9_was_down = false;
+    const bool f9_down = (GetAsyncKeyState(VK_F9) & 0x8000) != 0;
+
+    if (f9_down && !f9_was_down) {
+        ++capture_index;
+        spdlog::info("[MouseEmuDebug] ===== capture #{} =====", capture_index);
+
+        if (dbg.valid) {
+            spdlog::info("[MouseEmuDebug] controller_pos=({:.4f}, {:.4f}, {:.4f})", dbg.controller_pos.x, dbg.controller_pos.y, dbg.controller_pos.z);
+            spdlog::info("[MouseEmuDebug] controller_rot wxyz=({:.4f}, {:.4f}, {:.4f}, {:.4f})", dbg.controller_rot.w, dbg.controller_rot.x, dbg.controller_rot.y, dbg.controller_rot.z);
+            spdlog::info("[MouseEmuDebug] ray_dir=({:.4f}, {:.4f}, {:.4f})", dbg.ray_dir.x, dbg.ray_dir.y, dbg.ray_dir.z);
+            spdlog::info("[MouseEmuDebug] quad_pos=({:.4f}, {:.4f}, {:.4f}) quad_rot wxyz=({:.4f}, {:.4f}, {:.4f}, {:.4f})",
+                dbg.quad_pos.x, dbg.quad_pos.y, dbg.quad_pos.z, dbg.quad_rot.w, dbg.quad_rot.x, dbg.quad_rot.y, dbg.quad_rot.z);
+            spdlog::info("[MouseEmuDebug] quad_normal=({:.4f}, {:.4f}, {:.4f}) quad_size_meters={:.4f}x{:.4f}",
+                dbg.quad_normal.x, dbg.quad_normal.y, dbg.quad_normal.z, dbg.quad_width_meters, dbg.quad_height_meters);
+            spdlog::info("[MouseEmuDebug] ray_hit_plane={} distance={:.4f} within_quad={}", dbg.ray_hit_plane, dbg.ray_distance, dbg.within_quad);
+            spdlog::info("[MouseEmuDebug] world_hit=({:.4f}, {:.4f}, {:.4f}) local_hit=({:.4f}, {:.4f}, {:.4f}) uv=({:.4f}, {:.4f})",
+                dbg.world_hit.x, dbg.world_hit.y, dbg.world_hit.z, dbg.local_hit.x, dbg.local_hit.y, dbg.local_hit.z, dbg.uv.x, dbg.uv.y);
+            spdlog::info("[MouseEmuDebug] swapchain_size={:.0f}x{:.0f}", dbg.swapchain_size.x, dbg.swapchain_size.y);
+        } else {
+            spdlog::info("[MouseEmuDebug] no intersect snapshot recorded this frame (controllers inactive or overlay not updating)");
+        }
+
+        spdlog::info("[MouseEmuDebug] intersect_state: intersecting={} quad_pt=({:.4f}, {:.4f}) swapchain_pt=({:.1f}, {:.1f})",
+            state.intersecting, state.quad_intersection_point.x, state.quad_intersection_point.y,
+            state.swapchain_intersection_point.x, state.swapchain_intersection_point.y);
+        spdlog::info("[MouseEmuDebug] lerped=({:.1f}, {:.1f}) io.MousePos=({:.1f}, {:.1f}) display={:.0f}x{:.0f} window_size=({:.0f}, {:.0f}) window_pos=({:.0f}, {:.0f})",
+            m_last_mouse_pos.x, m_last_mouse_pos.y, io.MousePos.x, io.MousePos.y, io.DisplaySize.x, io.DisplaySize.y,
+            (float)window_size.x, (float)window_size.y, (float)window_pos.x, (float)window_pos.y);
+        spdlog::info("[MouseEmuDebug] draw_cursor={} over_any_window={} drawing_ui={}", io.MouseDrawCursor, over_any_window, g_framework->is_drawing_ui());
+    }
+
+    f9_was_down = f9_down;
+}
+
 void OverlayComponent::on_post_compositor_submit() {
     this->update_overlay_openvr();
     this->update_slate_openvr();
@@ -234,6 +355,8 @@ void OverlayComponent::on_draw_ui() {
             m_framework_wrist_ui->draw("Framework Wrist UI");
         }
         m_framework_mouse_emulation->draw("Framework Mouse Emulation");
+        ImGui::SameLine();
+        m_framework_mouse_emulation_debug->draw("Mouse Emulation Debug");
         ImGui::TreePop();
     }
 }
@@ -762,6 +885,8 @@ void OverlayComponent::update_overlay_openvr() {
             
             const auto plane_pos = glm::vec3{glm_matrix[3]};
 
+            record_framework_intersect_debug(right_controller_pos, right_controller_rot, glm_matrix, width_meters, height_meters, glm::vec2{size.x, size.y});
+
             float intersection_distance = 0.0f;
 
             auto& intersect_state = g_framework->is_drawing_ui() ? m_framework_intersect_state : m_intersect_state;
@@ -1097,6 +1222,9 @@ std::optional<std::reference_wrapper<XrCompositionLayerQuad>> OverlayComponent::
         const auto end = right_controller_pos + (fwd * 1000.0f);
         
         const auto plane_pos = glm::vec3{glm_matrix[3]};
+
+        m_parent->record_framework_intersect_debug(right_controller_pos, right_controller_rot, glm_matrix, meters_w, meters_h,
+            glm::vec2{(float)ui_swapchain.width, (float)ui_swapchain.height});
 
         float intersection_distance = 0.0f;
         if (glm::intersectRayPlane<glm::vec3>(start, fwd, plane_pos, glm::normalize(glm::vec3{glm_matrix[2]}), intersection_distance)) {

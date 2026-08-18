@@ -39,8 +39,31 @@ public:
     }
 
     const auto& get_framework_intersect_state() const {
-        return m_intersect_state;
+        return m_framework_intersect_state;
     }
+
+    // Every intermediate of the controller ray -> quad -> swapchain pixel mapping,
+    // captured where the intersection is computed so a keypress can dump a coherent snapshot.
+    struct IntersectDebugState {
+        bool valid{false};
+        glm::vec3 controller_pos{};
+        glm::quat controller_rot{};
+        glm::vec3 ray_dir{};
+        glm::vec3 quad_pos{};
+        glm::quat quad_rot{};
+        glm::vec3 quad_normal{};
+        float quad_width_meters{};
+        float quad_height_meters{};
+        glm::vec2 swapchain_size{};
+        bool ray_hit_plane{false};
+        float ray_distance{};
+        glm::vec3 world_hit{};
+        glm::vec3 local_hit{};
+        glm::vec2 uv{};
+        bool within_quad{false};
+    };
+
+    void draw_mouse_emulation_debug(); // must be called within an ImGui frame
 
     bool should_invert_ui_alpha() const {
         return m_ui_invert_alpha->value();
@@ -86,6 +109,7 @@ private:
 
     IntersectState m_intersect_state{};
     IntersectState m_framework_intersect_state{};
+    IntersectDebugState m_framework_intersect_debug{};
 
     enum OverlayType {
         DEFAULT = 0,
@@ -113,6 +137,7 @@ private:
     const ModToggle::Ptr m_framework_ui_follows_view{ ModToggle::create("UI_Framework_FollowView", false) };
     const ModToggle::Ptr m_framework_wrist_ui{ ModToggle::create("UI_Framework_WristUI", false) };
     const ModToggle::Ptr m_framework_mouse_emulation{ ModToggle::create("UI_Framework_MouseEmulation", true) };
+    const ModToggle::Ptr m_framework_mouse_emulation_debug{ ModToggle::create("UI_Framework_MouseEmulationDebug", false) };
 
 public:
     OverlayComponent() 
@@ -131,7 +156,8 @@ public:
             *m_framework_size,
             *m_framework_ui_follows_view,
             *m_framework_wrist_ui,
-            *m_framework_mouse_emulation
+            *m_framework_mouse_emulation,
+            *m_framework_mouse_emulation_debug
         };
     }
 
@@ -173,6 +199,8 @@ private:
 private:
     void update_input_openvr();
     void update_input_mouse_emulation();
+    void record_framework_intersect_debug(const glm::vec3& controller_pos, const glm::quat& controller_rot,
+        const Matrix4x4f& quad_matrix, float width_meters, float height_meters, const glm::vec2& swapchain_size);
     void update_overlay_openvr();
     bool update_wrist_overlay_openvr();
     void update_slate_openvr();

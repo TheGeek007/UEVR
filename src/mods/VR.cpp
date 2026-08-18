@@ -2042,6 +2042,10 @@ void VR::on_frame() {
         return;
     }
 
+    if (!m_disable_overlay) {
+        m_overlay_component.draw_mouse_emulation_debug();
+    }
+
     const auto now = std::chrono::steady_clock::now();
     const auto is_allowed_draw_window = now - m_last_xinput_update < std::chrono::seconds(2);
 
