@@ -1434,6 +1434,17 @@ void save_config() {
 void reload_config() {
     g_framework->deferred_reload_config();
 }
+
+bool get_ui_intersect_uv(UEVR_Vector2f* out_uv) {
+    const auto& state = VR::get()->get_overlay_component().get_intersect_state();
+
+    if (out_uv != nullptr) {
+        out_uv->x = state.quad_intersection_point.x;
+        out_uv->y = state.quad_intersection_point.y;
+    }
+
+    return state.intersecting;
+}
 }
 
 } // namespace uevr::vr
@@ -1488,6 +1499,7 @@ UEVR_VRData g_vr_data {
     .get_mod_value = uevr::vr::get_mod_value,
     .save_config = uevr::vr::save_config,
     .reload_config = uevr::vr::reload_config,
+    .get_ui_intersect_uv = uevr::vr::get_ui_intersect_uv,
 };
 
 

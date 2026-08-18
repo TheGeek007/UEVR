@@ -618,6 +618,9 @@ typedef struct {
     void (*get_mod_value)(const char* key, char* value, unsigned int value_size);
     void (*save_config)();
     void (*reload_config)();
+
+    /* True while the aim ray hits the game UI quad this frame; writes the normalized quad UV (x: 0=left, y: 0=top). */
+    bool (*get_ui_intersect_uv)(UEVR_Vector2f* out_uv);
 } UEVR_VRData;
 
 struct lua_State;

@@ -486,7 +486,12 @@ int ScriptContext::setup_bindings() {
             return std::string{out};
         },
         "save_config", &UEVR_VRData::save_config,
-        "reload_config", &UEVR_VRData::reload_config
+        "reload_config", &UEVR_VRData::reload_config,
+        "get_ui_intersect_uv", [](UEVR_VRData& self) -> std::tuple<bool, float, float> {
+            UEVR_Vector2f uv{};
+            const bool hit = self.get_ui_intersect_uv(&uv);
+            return std::make_tuple(hit, uv.x, uv.y);
+        }
     );
 
     // TODO: Add operators to these types
