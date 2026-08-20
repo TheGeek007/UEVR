@@ -844,6 +844,15 @@ void VR::on_xinput_get_state(uint32_t* retval, uint32_t user_index, XINPUT_STATE
         state->Gamepad.bLeftTrigger = 255;
     }
 
+    // Capture-chord "shift": while mouse-emulation debug is on and the left system button is
+    // touched, the left trigger belongs to the capture chord. Hide it from the game and the Lua
+    // scripts (they see this synthesized state) so a capture cannot also fire whatever LT
+    // normally does - the menu laser toggle, UI-follow pause, glider pitch.
+    if (m_overlay_component.is_mouse_emulation_debug_enabled() &&
+        is_action_active(m_action_system_touch_left, m_left_joystick)) {
+        state->Gamepad.bLeftTrigger = 0;
+    }
+
     if (is_right_trigger_analog) {
         state->Gamepad.bRightTrigger = (uint8_t)(std::clamp(right_trigger_pull, 0.0f, 1.0f) * 255.0f);
     } else if (is_right_trigger_down) {

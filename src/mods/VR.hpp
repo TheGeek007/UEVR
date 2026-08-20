@@ -107,6 +107,7 @@ public:
     static const inline std::string s_action_dpad_down = "/actions/default/in/DPad_Down";
     static const inline std::string s_action_dpad_left = "/actions/default/in/DPad_Left";
     static const inline std::string s_action_system_button = "/actions/default/in/SystemButton";
+    static const inline std::string s_action_system_touch_left = "/actions/default/in/SystemTouchLeft";
     static const inline std::string s_action_thumbrest_touch_left = "/actions/default/in/ThumbrestTouchLeft";
     static const inline std::string s_action_thumbrest_touch_right = "/actions/default/in/ThumbrestTouchRight";
 
@@ -841,6 +842,7 @@ private:
     vr::VRActionHandle_t m_action_dpad_left{};
 
     vr::VRActionHandle_t m_action_system_button{};
+    vr::VRActionHandle_t m_action_system_touch_left{};
     vr::VRActionHandle_t m_action_haptic{};
     vr::VRActionHandle_t m_action_thumbrest_touch_left{};
     vr::VRActionHandle_t m_action_thumbrest_touch_right{};
@@ -874,6 +876,7 @@ private:
         { s_action_dpad_left, m_action_dpad_left },
 
         { s_action_system_button, m_action_system_button },
+        { s_action_system_touch_left, m_action_system_touch_left },
         { s_action_thumbrest_touch_left, m_action_thumbrest_touch_left },
         { s_action_thumbrest_touch_right, m_action_thumbrest_touch_right },
 

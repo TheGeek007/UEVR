@@ -487,6 +487,9 @@ public:
         {"/user/hand/*/input/thumbstick", "joystick"}, // oculus?
         {"/user/hand/*/input/thumbstick/click", "joystickclick"}, // oculus?
         {"/user/hand/*/input/system/click", "systembutton"}, // oculus/vive/index
+        // Capture-chord "shift". Index only; profiles without system/touch reject the suggested
+        // binding and attempt_add_binding pops it, so listing it here is safe everywhere.
+        {"/user/hand/left/input/system/touch", "systemtouchleft"}, // index
         {"/user/hand/*/input/menu/click", "systembutton"}, // oculus/vive/index
 
         {"/user/hand/left/input/thumbrest/touch", "thumbresttouchleft"}, // cv1/quest pro

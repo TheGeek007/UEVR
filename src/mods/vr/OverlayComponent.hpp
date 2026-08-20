@@ -2,6 +2,7 @@
 
 #include <string>
 #include <optional>
+#include <chrono>
 #include <cstdint>
 
 #include "Mod.hpp"
@@ -40,6 +41,10 @@ public:
 
     const auto& get_framework_intersect_state() const {
         return m_framework_intersect_state;
+    }
+
+    bool is_mouse_emulation_debug_enabled() const {
+        return m_framework_mouse_emulation_debug->value();
     }
 
     // Every intermediate of the controller ray -> quad -> swapchain pixel mapping,
@@ -110,6 +115,11 @@ private:
     IntersectState m_intersect_state{};
     IntersectState m_framework_intersect_state{};
     IntersectDebugState m_framework_intersect_debug{};
+
+    // capture-chord state (mouse emulation debug)
+    std::optional<std::chrono::steady_clock::time_point> m_capture_second_pulse_at{};
+    bool m_capture_chord_touch{false};
+    float m_capture_chord_trigger{0.0f};
 
     enum OverlayType {
         DEFAULT = 0,

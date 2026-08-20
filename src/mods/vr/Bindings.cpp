@@ -102,6 +102,10 @@ std::string VR::actions_json = R"(
       "type": "boolean"
     },
     {
+      "name": "/actions/default/in/SystemTouchLeft",
+      "type": "boolean"
+    },
+    {
       "name": "/actions/default/in/Squeeze",
       "type": "vector1"
     },

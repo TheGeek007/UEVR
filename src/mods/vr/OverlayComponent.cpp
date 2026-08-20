@@ -265,14 +265,13 @@ void OverlayComponent::draw_mouse_emulation_debug() {
     ImGui::Text("lerped: (%.1f, %.1f)  io.MousePos: (%.1f, %.1f)", m_last_mouse_pos.x, m_last_mouse_pos.y, io.MousePos.x, io.MousePos.y);
     ImGui::Text("display: %.0fx%.0f  draw_cursor: %d  over_any_window: %d", io.DisplaySize.x, io.DisplaySize.y,
         io.MouseDrawCursor, over_any_window);
-    ImGui::Text("F9: dump snapshot to log (captured: %d)", capture_index);
+    ImGui::Text("F9 or SysTouchL+LT: dump snapshot to log (captured: %d)", capture_index);
+    ImGui::Text("SysTouchL=%d LT=%.2f", m_capture_chord_touch, m_capture_chord_trigger);
     ImGui::End();
 
-    // F9 captures the full snapshot while the user holds the ray on a reference point (e.g. a menu corner)
-    static bool f9_was_down = false;
-    const bool f9_down = (GetAsyncKeyState(VK_F9) & 0x8000) != 0;
-
-    if (f9_down && !f9_was_down) {
+    // Captures the full snapshot while the user holds the ray on a reference point (e.g. a menu
+    // corner). Reached from F9 (desktop) or the left system-touch + left-trigger chord (in-headset).
+    const auto do_capture = [&]() {
         ++capture_index;
         spdlog::info("[MouseEmuDebug] ===== capture #{} =====", capture_index);
 
@@ -299,9 +298,71 @@ void OverlayComponent::draw_mouse_emulation_debug() {
             m_last_mouse_pos.x, m_last_mouse_pos.y, io.MousePos.x, io.MousePos.y, io.DisplaySize.x, io.DisplaySize.y,
             (float)window_size.x, (float)window_size.y, (float)window_pos.x, (float)window_pos.y);
         spdlog::info("[MouseEmuDebug] draw_cursor={} over_any_window={} drawing_ui={}", io.MouseDrawCursor, over_any_window, g_framework->is_drawing_ui());
-    }
 
+        // Capture feedback on the LEFT controller (the commanding hand): one firm pulse for a
+        // sample with a valid on-panel intersection, two short pulses for a dud. MessageBeep is
+        // the async beep - Beep() would block this thread for its duration and drop frames.
+        const bool good_sample = dbg.valid && dbg.within_quad;
+        auto& vr = *VR::get();
+        vr.trigger_haptic_vibration(0.0f, good_sample ? 0.08f : 0.05f, 1000.0f, 1.0f, vr.get_left_joystick());
+        if (!good_sample) {
+            // trigger_haptic_vibration's delay parameter is dropped on OpenXR, so schedule the
+            // second pulse ourselves; it fires from the per-frame check below.
+            m_capture_second_pulse_at = std::chrono::steady_clock::now() + std::chrono::milliseconds(150);
+        }
+        MessageBeep(good_sample ? MB_OK : MB_ICONWARNING);
+    };
+
+    // F9: desktop path
+    static bool f9_was_down = false;
+    const bool f9_down = (GetAsyncKeyState(VK_F9) & 0x8000) != 0;
+    if (f9_down && !f9_was_down) {
+        do_capture();
+    }
     f9_was_down = f9_down;
+
+    // In-headset path: touch the LEFT system button and pull the LEFT trigger. Keeps the keyboard
+    // and the right (measuring) controller out of the capture entirely. Reads the action layer
+    // directly, so the xinput LT masking in VR::on_xinput_get_state cannot interfere with it.
+    {
+        auto& vr = *VR::get();
+        const auto left_src = vr.get_left_joystick();
+        const bool sys_touch = vr.is_action_active(vr.get_action_handle(VR::s_action_system_touch_left), left_src);
+
+        bool lt_analog{false};
+        float lt = vr.get_action_analog(vr.get_action_handle(VR::s_action_trigger_axis), left_src, &lt_analog);
+        if (!lt_analog && vr.is_action_active(vr.get_action_handle(VR::s_action_trigger), left_src)) {
+            lt = 1.0f;
+        }
+
+        // The feasibility signal: log the touch edges, so a run with zero captures still shows
+        // whether the runtime delivered system-touch at all. Silence alone proves nothing.
+        static bool touch_was = false;
+        if (sys_touch != touch_was) {
+            spdlog::info("[MouseEmuDebug] left system touch: {}", sys_touch ? "DOWN" : "UP");
+            touch_was = sys_touch;
+        }
+
+        // Hysteresis: fire at 0.7 pull, re-arm below 0.3 or when the touch lifts.
+        static bool chord_armed = true;
+        if (sys_touch && lt >= 0.7f && chord_armed) {
+            chord_armed = false;
+            do_capture();
+        }
+        if (!sys_touch || lt <= 0.3f) {
+            chord_armed = true;
+        }
+
+        // second half of the dud double-pulse
+        if (m_capture_second_pulse_at && std::chrono::steady_clock::now() >= *m_capture_second_pulse_at) {
+            vr.trigger_haptic_vibration(0.0f, 0.05f, 1000.0f, 1.0f, left_src);
+            m_capture_second_pulse_at.reset();
+        }
+
+        // shown in the debug window next frame
+        m_capture_chord_touch = sys_touch;
+        m_capture_chord_trigger = lt;
+    }
 }
 
 void OverlayComponent::on_post_compositor_submit() {
