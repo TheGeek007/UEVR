@@ -841,6 +841,9 @@ std::string VR::bindings_knuckles = R"(
                "inputs" : {
                   "click" : {
                      "output" : "/actions/default/in/systembutton"
+                  },
+                  "touch" : {
+                     "output" : "/actions/default/in/systemtouchleft"
                   }
                },
                "mode" : "button",
