@@ -488,6 +488,11 @@ int ScriptContext::setup_bindings() {
         "save_config", &UEVR_VRData::save_config,
         "reload_config", &UEVR_VRData::reload_config,
         "inject_mouse_wheel", &UEVR_VRData::inject_mouse_wheel,
+        "get_touchpad_state", [](UEVR_VRData& self, unsigned int hand) -> std::tuple<bool, float, float> {
+            UEVR_Vector2f axis{};
+            const bool touched = self.get_touchpad_state(hand, &axis);
+            return std::make_tuple(touched, axis.x, axis.y);
+        },
         "get_ui_intersect_uv", [](UEVR_VRData& self) -> std::tuple<bool, float, float> {
             UEVR_Vector2f uv{};
             const bool hit = self.get_ui_intersect_uv(&uv);

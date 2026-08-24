@@ -1455,6 +1455,20 @@ void inject_mouse_wheel(float delta) {
     const auto lparam = (LPARAM)MAKELPARAM(pt.x, pt.y);
     g_framework->post_message(WM_MOUSEWHEEL, wparam, lparam);
 }
+
+bool get_touchpad_state(unsigned int hand, UEVR_Vector2f* out_axis) {
+    auto& vr = *::VR::get();
+    const auto source = hand == 0 ? vr.get_left_joystick() : vr.get_right_joystick();
+    const bool touched = vr.is_action_active(vr.get_action_handle(::VR::s_action_touchpad_touch), source);
+
+    if (out_axis != nullptr) {
+        const auto axis = vr.get_action_axis(vr.get_action_handle(::VR::s_action_touchpad), source);
+        out_axis->x = axis.x;
+        out_axis->y = axis.y;
+    }
+
+    return touched;
+}
 }
 
 } // namespace uevr::vr
@@ -1511,6 +1525,7 @@ UEVR_VRData g_vr_data {
     .reload_config = uevr::vr::reload_config,
     .get_ui_intersect_uv = uevr::vr::get_ui_intersect_uv,
     .inject_mouse_wheel = uevr::vr::inject_mouse_wheel,
+    .get_touchpad_state = uevr::vr::get_touchpad_state,
 };
 
 

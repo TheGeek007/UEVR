@@ -624,6 +624,9 @@ typedef struct {
 
     /* Posts a real WM_MOUSEWHEEL to the game window at the current cursor position; delta is in wheel notches (+up/-down). */
     void (*inject_mouse_wheel)(float delta);
+
+    /* True while the given hand's touchpad is touched; writes the pad position in [-1,1]. hand: 0=left, 1=right. */
+    bool (*get_touchpad_state)(unsigned int hand, UEVR_Vector2f* out_axis);
 } UEVR_VRData;
 
 struct lua_State;
