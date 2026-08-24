@@ -304,7 +304,10 @@ void OverlayComponent::draw_mouse_emulation_debug() {
         // the async beep - Beep() would block this thread for its duration and drop frames.
         const bool good_sample = dbg.valid && dbg.within_quad;
         auto& vr = *VR::get();
-        vr.trigger_haptic_vibration(0.0f, good_sample ? 0.08f : 0.05f, 1000.0f, 1.0f, vr.get_left_joystick());
+        // frequency 1.0 / amplitude 5.0 mirror UEVR's own gesture pulse - the only haptic values
+        // verified to be felt on Index. 1000 Hz is above the LRA's response band and feels like
+        // nothing at all, which is also why the profile's Lua hitBuzz (same 1000 Hz) goes unfelt.
+        vr.trigger_haptic_vibration(0.0f, good_sample ? 0.1f : 0.05f, 1.0f, 5.0f, vr.get_left_joystick());
         if (!good_sample) {
             // trigger_haptic_vibration's delay parameter is dropped on OpenXR, so schedule the
             // second pulse ourselves; it fires from the per-frame check below.
@@ -355,7 +358,7 @@ void OverlayComponent::draw_mouse_emulation_debug() {
 
         // second half of the dud double-pulse
         if (m_capture_second_pulse_at && std::chrono::steady_clock::now() >= *m_capture_second_pulse_at) {
-            vr.trigger_haptic_vibration(0.0f, 0.05f, 1000.0f, 1.0f, left_src);
+            vr.trigger_haptic_vibration(0.0f, 0.05f, 1.0f, 5.0f, left_src);
             m_capture_second_pulse_at.reset();
         }
 
