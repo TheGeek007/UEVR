@@ -116,6 +116,10 @@ private:
     IntersectState m_framework_intersect_state{};
     IntersectDebugState m_framework_intersect_debug{};
 
+    // The transform the visible slate overlay was actually placed with this frame (OpenVR path).
+    // The mouse-emulation quad reuses it so the two can never drift apart again.
+    Matrix4x4f m_last_slate_matrix{1.0f};
+
     // capture-chord state (mouse emulation debug)
     std::optional<std::chrono::steady_clock::time_point> m_capture_second_pulse_at{};
     bool m_capture_chord_touch{false};

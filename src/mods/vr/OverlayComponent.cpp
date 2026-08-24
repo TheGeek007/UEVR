@@ -233,7 +233,10 @@ void OverlayComponent::draw_mouse_emulation_debug() {
 
     auto& io = ImGui::GetIO();
     auto* draw_list = ImGui::GetForegroundDrawList();
-    const auto& state = m_framework_intersect_state;
+    // With the UEVR menu closed, the live emulation state is the game-UI one; the framework
+    // state only updates while the menu is open - which is why the crosshair never appeared
+    // during captures.
+    const auto& state = g_framework->is_drawing_ui() ? m_framework_intersect_state : m_intersect_state;
     const auto& dbg = m_framework_intersect_debug;
 
     // Red crosshair: the raw ray/quad intersection mapped into UI pixels.
@@ -369,8 +372,9 @@ void OverlayComponent::draw_mouse_emulation_debug() {
 }
 
 void OverlayComponent::on_post_compositor_submit() {
-    this->update_overlay_openvr();
+    // slate first: update_overlay_openvr mirrors m_last_slate_matrix, so it must be this frame's
     this->update_slate_openvr();
+    this->update_overlay_openvr();
 }
 
 
@@ -554,6 +558,8 @@ void OverlayComponent::update_slate_openvr() {
     glm_matrix[3] += m_slate_y_offset->value() * glm_matrix[1];
     glm_matrix[3].w = 1.0f;
     
+    m_last_slate_matrix = glm_matrix;
+
     const auto steamvr_matrix = Matrix3x4f{glm::rowMajor4(glm_matrix)};
     vr::VROverlay()->SetOverlayTransformAbsolute(m_slate_overlay_handle, vr::TrackingUniverseStanding, (vr::HmdMatrix34_t*)&steamvr_matrix);
 
@@ -897,10 +903,15 @@ void OverlayComponent::update_overlay_openvr() {
         if (g_framework->is_drawing_ui()) {
             glm_matrix[3] -= glm_matrix[2] * m_framework_distance->value();
         } else {
-            glm_matrix[3] -= glm_matrix[2] * (m_slate_distance->value() - 0.01f);
-
-            glm_matrix[3] += m_slate_x_offset->value() * glm_matrix[0];
-            glm_matrix[3] += m_slate_y_offset->value() * glm_matrix[1];
+            // Mirror the slate's REAL transform rather than reconstructing it. The visible slate
+            // can be head-anchored (UI_FollowView) and pitch-adjusted; rebuilding from the
+            // standing origin only coincides with it at stock settings. Under a profile that
+            // moves the panel (UI_Distance 3.033, follow-view, decoupled pitch) the two quads
+            // drift apart, which showed up as a mouse-emulation cursor whose scale depended on
+            // where the player stood, and as two visibly misaligned panels. Reuse the matrix the
+            // slate was actually placed with this frame, nudged 1cm toward the viewer.
+            glm_matrix = m_last_slate_matrix;
+            glm_matrix[3] += glm_matrix[2] * 0.01f;
         }
 
         glm_matrix[3].w = 1.0f;
