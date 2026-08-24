@@ -1445,6 +1445,16 @@ bool get_ui_intersect_uv(UEVR_Vector2f* out_uv) {
 
     return state.intersecting;
 }
+
+void inject_mouse_wheel(float delta) {
+    POINT pt{};
+    GetCursorPos(&pt);
+    // real Slate-visible wheel input: InputKey scroll keys reach game bindings but not UMG
+    // scroll boxes, a window message reaches both.
+    const auto wparam = (WPARAM)MAKEWPARAM(0, (int16_t)(delta * WHEEL_DELTA));
+    const auto lparam = (LPARAM)MAKELPARAM(pt.x, pt.y);
+    g_framework->post_message(WM_MOUSEWHEEL, wparam, lparam);
+}
 }
 
 } // namespace uevr::vr
@@ -1500,6 +1510,7 @@ UEVR_VRData g_vr_data {
     .save_config = uevr::vr::save_config,
     .reload_config = uevr::vr::reload_config,
     .get_ui_intersect_uv = uevr::vr::get_ui_intersect_uv,
+    .inject_mouse_wheel = uevr::vr::inject_mouse_wheel,
 };
 
 

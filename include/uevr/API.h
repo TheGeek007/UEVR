@@ -621,6 +621,9 @@ typedef struct {
 
     /* True while the aim ray hits the game UI quad this frame; writes the normalized quad UV (x: 0=left, y: 0=top). */
     bool (*get_ui_intersect_uv)(UEVR_Vector2f* out_uv);
+
+    /* Posts a real WM_MOUSEWHEEL to the game window at the current cursor position; delta is in wheel notches (+up/-down). */
+    void (*inject_mouse_wheel)(float delta);
 } UEVR_VRData;
 
 struct lua_State;

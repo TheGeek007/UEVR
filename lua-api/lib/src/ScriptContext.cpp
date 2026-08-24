@@ -487,6 +487,7 @@ int ScriptContext::setup_bindings() {
         },
         "save_config", &UEVR_VRData::save_config,
         "reload_config", &UEVR_VRData::reload_config,
+        "inject_mouse_wheel", &UEVR_VRData::inject_mouse_wheel,
         "get_ui_intersect_uv", [](UEVR_VRData& self) -> std::tuple<bool, float, float> {
             UEVR_Vector2f uv{};
             const bool hit = self.get_ui_intersect_uv(&uv);
