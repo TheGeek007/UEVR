@@ -1133,16 +1133,19 @@ void Framework::draw_ui() {
         m_current_theme = get_imgui_theme_value();
     }
 
-    ImGui::GetIO().MouseDrawCursor = m_draw_ui || FrameworkConfig::get()->is_always_show_cursor();
+    // The framework arrow only makes sense inside the UEVR menu; with the menu closed the game-UI
+    // mouse emulation has its own marker, and this arrow just sat frozen at the last menu position.
+    ImGui::GetIO().MouseDrawCursor = m_draw_ui;
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange; // causes bugs with the cursor
 
     if (!m_draw_ui) {
-        // remove SetCursorPos patch
-        if (!FrameworkConfig::get()->is_always_show_cursor()) {
-            remove_set_cursor_pos_patch();
-        } else {
-            patch_set_cursor_pos();
-        }
+        // With the menu closed the game owns the cursor: game-UI mouse emulation drives it through
+        // SetMouseLocation -> ::SetCursorPos, so the patch must come off even in always-show-cursor
+        // mode. Keeping it installed silently froze the OS cursor during game menus, breaking every
+        // Slate path that consults it (drag-and-drop especially). AlwaysShowCursor is still
+        // required with the menu closed - is_drawing_anything() gates the whole overlay/intersect
+        // path - so it must stay on; the frozen cursor and the arrow were its only bad side effects.
+        remove_set_cursor_pos_patch();
 
         m_is_ui_focused = false;
         if (m_last_draw_ui) {
