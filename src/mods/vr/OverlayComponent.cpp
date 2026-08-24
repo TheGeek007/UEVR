@@ -270,9 +270,13 @@ void OverlayComponent::draw_mouse_emulation_debug() {
         draw_list->AddLine(ImVec2{p.x, p.y - 20.0f}, ImVec2{p.x, p.y + 20.0f}, IM_COL32(255, 0, 0, 255), 2.0f);
     }
 
-    // Yellow: the lerped position mouse emulation feeds ImGui. Green: where ImGui's mouse actually is.
-    draw_list->AddCircleFilled(ImVec2{m_last_mouse_pos.x, m_last_mouse_pos.y}, 5.0f, IM_COL32(255, 255, 0, 255));
-    draw_list->AddCircle(io.MousePos, 8.0f, IM_COL32(0, 255, 0, 255), 12, 2.0f);
+    // Yellow: the lerped position mouse emulation feeds ImGui. Green: where ImGui's mouse actually
+    // is. Both only update while the UEVR menu is open - drawn outside it they are frozen relics
+    // that read as mystery dots, so they are gated to the menu.
+    if (g_framework->is_drawing_ui()) {
+        draw_list->AddCircleFilled(ImVec2{m_last_mouse_pos.x, m_last_mouse_pos.y}, 5.0f, IM_COL32(255, 255, 0, 255));
+        draw_list->AddCircle(io.MousePos, 8.0f, IM_COL32(0, 255, 0, 255), 12, 2.0f);
+    }
 
     static int capture_index = 0;
 
