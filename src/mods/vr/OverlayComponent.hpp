@@ -69,6 +69,7 @@ public:
     };
 
     void draw_mouse_emulation_debug(); // must be called within an ImGui frame
+    void draw_mouse_cursor_marker();   // ditto; the visible cursor for game-UI mouse emulation
 
     bool should_invert_ui_alpha() const {
         return m_ui_invert_alpha->value();

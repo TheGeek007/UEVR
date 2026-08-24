@@ -226,6 +226,27 @@ void OverlayComponent::record_framework_intersect_debug(const glm::vec3& control
     }
 }
 
+void OverlayComponent::draw_mouse_cursor_marker() {
+    // The game's own mouse cursor is a hardware cursor: it moves and clicks at the emulated
+    // position but is never drawn into the render target the VR screen displays, so mouse
+    // emulation is invisible without this. ImGui elements land on the screen surface (the
+    // framework overlay is congruent with the slate when the menu is closed), so a small
+    // marker here is the visible cursor.
+    if (!m_framework_mouse_emulation->value() || g_framework->is_drawing_ui()) {
+        return;
+    }
+
+    const auto& state = m_intersect_state;
+    if (!state.intersecting) {
+        return;
+    }
+
+    auto* draw_list = ImGui::GetForegroundDrawList();
+    const auto p = ImVec2{state.swapchain_intersection_point.x, state.swapchain_intersection_point.y};
+    draw_list->AddCircleFilled(p, 5.0f, IM_COL32(255, 255, 255, 230), 16);
+    draw_list->AddCircle(p, 6.5f, IM_COL32(0, 0, 0, 230), 16, 2.0f);
+}
+
 void OverlayComponent::draw_mouse_emulation_debug() {
     if (!m_framework_mouse_emulation_debug->value()) {
         return;

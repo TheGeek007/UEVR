@@ -2052,6 +2052,7 @@ void VR::on_frame() {
     }
 
     if (!m_disable_overlay) {
+        m_overlay_component.draw_mouse_cursor_marker();
         m_overlay_component.draw_mouse_emulation_debug();
     }
 
